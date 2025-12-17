@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <title>Rafetus Editor</title>
+
+  <!-- Quill core -->
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #111111;
+      --border: #e5e5e5;
+      --toolbar-bg: #fafafa;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                   "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    #toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    #editor {
+      padding: 16px;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .ql-container {
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .ql-editor h1 {
+      font-size: 1.8em;
+      font-weight: 600;
+    }
+
+    .ql-editor h2 {
+      font-size: 1.4em;
+      font-weight: 600;
+    }
+
+    .ql-editor blockquote {
+      border-left: 3px solid #ccc;
+      padding-left: 12px;
+      color: #555;
+    }
+
+    .ql-toolbar button,
+    .ql-toolbar select {
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <select class="ql-header">
+      <option selected></option>
+      <option value="1">H1</option>
+      <option value="2">H2</option>
+    </select>
+
+    <button class="ql-bold"></button>
+    <button class="ql-italic"></button>
+    <button class="ql-underline"></button>
+
+    <button class="ql-blockquote"></button>
+    <button class="ql-list" value="ordered"></button>
+    <button class="ql-list" value="bullet"></button>
+
+    <button class="ql-link"></button>
+    <button class="ql-image"></button>
+
+    <button class="ql-clean"></button>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor"></div>
+
+  <script>
+    const quill = new Quill('#editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: '#toolbar'
+      },
+      placeholder: 'Write your reflection…'
+    });
+
+    // Send content to FlutterFlow
+    function sendContent() {
+      const html = quill.root.innerHTML;
+      if (window.flutter_inappwebview) {
+        window.flutter_inappwebview.callHandler('onChange', html);
+      }
+    }
+
+    quill.on('text-change', sendContent);
+
+    // Receive content from FlutterFlow
+    function setContent(html) {
+      if (!html) return;
+      quill.root.innerHTML = html;
+    }
+
+    // Expose for FlutterFlow
+    window.setContent = setContent;
+  </script>
+
+</body>
+</html>
