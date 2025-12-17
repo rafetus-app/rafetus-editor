@@ -1,69 +1,167 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rafetus Editor</title>
-
-  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
-  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
-
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Reflection Editor</title>
   <style>
-    body { margin:0; background:#fff; }
-    #toolbar{
-      position:sticky; top:0; z-index:10;
-      background:#fafafa; border-bottom:1px solid #e5e5e5;
-      padding:6px; display:flex; gap:6px; flex-wrap:wrap;
-      align-items:center;
+    :root{
+      --bg:#ffffff;
+      --text:#111;
+      --muted:#6b7280;
+      --border:#e5e7eb;
+      --toolbar:#fafafa;
+      --accent:#111;
+      --radius:10px;
+      --font: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
     }
-    #editor { padding:16px; min-height: calc(100vh - 48px); box-sizing:border-box; }
-    .ql-container { font-size:16px; line-height:1.7; }
+    body{ margin:0; background:var(--bg); color:var(--text); }
+    .wrap{ min-height:100vh; display:flex; flex-direction:column; }
+    .toolbar{
+      position:sticky; top:0; z-index:10;
+      background:var(--toolbar);
+      border-bottom:1px solid var(--border);
+      padding:8px 10px;
+      display:flex; gap:6px; flex-wrap:wrap;
+      font-family:var(--sans);
+    }
+    .btn{
+      appearance:none; border:1px solid var(--border);
+      background:#fff; color:var(--text);
+      padding:6px 10px; border-radius:999px;
+      font-size:13px; cursor:pointer;
+    }
+    .btn.active{ border-color:#111; }
+    .editor{
+      flex:1;
+      padding:18px 16px 24px;
+      font-family:var(--font);
+      font-size:18px;
+      line-height:1.75;
+      max-width: 680px;
+      width:100%;
+      margin:0 auto;
+      box-sizing:border-box;
+    }
+    .ProseMirror{ outline:none; }
+    .ProseMirror p.is-empty:first-child::before{
+      content: attr(data-placeholder);
+      float:left; color:var(--muted); pointer-events:none; height:0;
+    }
+    .ProseMirror h1{ font-size: 2.0em; line-height:1.2; margin: 0.7em 0 0.4em; }
+    .ProseMirror h2{ font-size: 1.5em; line-height:1.25; margin: 0.8em 0 0.4em; }
+    .ProseMirror blockquote{
+      border-left:3px solid #d1d5db;
+      margin: 1em 0; padding: 0.2em 0 0.2em 0.9em;
+      color:#374151;
+    }
+    .ProseMirror ul{ padding-left: 1.2em; }
+    .ProseMirror a{ color:#111; text-decoration: underline; }
+    .ProseMirror img{ max-width:100%; border-radius:12px; margin: 12px 0; }
   </style>
 </head>
-
 <body>
-  <div id="toolbar">
-    <select class="ql-header">
-      <option selected></option>
-      <option value="1">H1</option>
-      <option value="2">H2</option>
-    </select>
-    <button class="ql-bold"></button>
-    <button class="ql-italic"></button>
-    <button class="ql-blockquote"></button>
-    <button class="ql-list" value="bullet"></button>
-    <button class="ql-image"></button>
-    <button class="ql-clean"></button>
+  <div class="wrap">
+    <div class="toolbar" id="toolbar">
+      <button class="btn" data-cmd="h1">H1</button>
+      <button class="btn" data-cmd="h2">H2</button>
+      <button class="btn" data-cmd="bold"><b>B</b></button>
+      <button class="btn" data-cmd="italic"><i>I</i></button>
+      <button class="btn" data-cmd="quote">“ ”</button>
+      <button class="btn" data-cmd="bullet">• List</button>
+      <button class="btn" data-cmd="link">Link</button>
+      <button class="btn" data-cmd="image">Image</button>
+      <button class="btn" data-cmd="clear">Clear</button>
+    </div>
+
+    <div class="editor" id="editor"></div>
   </div>
 
-  <div id="editor"></div>
+  <script type="module">
+    import { Editor } from "https://esm.sh/@tiptap/core@2.11.5";
+    import StarterKit from "https://esm.sh/@tiptap/starter-kit@2.11.5";
+    import Link from "https://esm.sh/@tiptap/extension-link@2.11.5";
+    import Image from "https://esm.sh/@tiptap/extension-image@2.11.5";
+    import Placeholder from "https://esm.sh/@tiptap/extension-placeholder@2.11.5";
 
-  <script>
-    const quill = new Quill('#editor', {
-      theme: 'snow',
-      modules: { toolbar: '#toolbar' },
-      placeholder: 'Write your reflection…'
+    const editor = new Editor({
+      element: document.querySelector("#editor"),
+      extensions: [
+        StarterKit.configure({ heading: { levels: [1,2] } }),
+        Link.configure({ openOnClick: false }),
+        Image,
+        Placeholder.configure({
+          placeholder: "Bắt đầu viết…",
+          emptyEditorClass: "is-empty",
+        }),
+      ],
+      content: "",
     });
 
-    function normalizedHtml() {
-      const text = quill.getText().trim();
-      if (!text) return '';
-      return quill.root.innerHTML;
-    }
-
-    // Flutter -> Web
+    // ---------- API cho Flutter ----------
     window.setContent = (html) => {
-      const s = (html ?? '').toString();
-      if (!s.trim()) { quill.setText(''); return; }
-      const delta = quill.clipboard.convert(s);
-      quill.setContents(delta);
+      const s = (html ?? "").toString();
+      // TipTap setContent nhận HTML ok
+      editor.commands.setContent(s, false);
     };
 
-    // Web -> Flutter (app sẽ gọi getContent qua JS evaluate)
-    window.getContent = () => normalizedHtml();
+    window.getContent = () => {
+      // trả HTML
+      return editor.getHTML();
+    };
 
-    // Handshake: báo Flutter "sẵn sàng"
-    window.flutter_inappwebview?.callHandler('editorReady');
+    // báo cho Flutter biết editor đã sẵn sàng
+    window.flutter_inappwebview?.callHandler("editorReady");
+
+    // ---------- Toolbar ----------
+    const $toolbar = document.getElementById("toolbar");
+    function setActiveStates(){
+      for (const btn of $toolbar.querySelectorAll(".btn")){
+        const cmd = btn.dataset.cmd;
+        btn.classList.toggle("active",
+          (cmd === "bold" && editor.isActive("bold")) ||
+          (cmd === "italic" && editor.isActive("italic")) ||
+          (cmd === "quote" && editor.isActive("blockquote")) ||
+          (cmd === "bullet" && editor.isActive("bulletList")) ||
+          (cmd === "h1" && editor.isActive("heading", { level: 1 })) ||
+          (cmd === "h2" && editor.isActive("heading", { level: 2 })) ||
+          (cmd === "link" && editor.isActive("link"))
+        );
+      }
+    }
+    editor.on("selectionUpdate", setActiveStates);
+    editor.on("transaction", setActiveStates);
+
+    $toolbar.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".btn");
+      if (!btn) return;
+      const cmd = btn.dataset.cmd;
+
+      if (cmd === "h1") editor.chain().focus().toggleHeading({ level: 1 }).run();
+      if (cmd === "h2") editor.chain().focus().toggleHeading({ level: 2 }).run();
+      if (cmd === "bold") editor.chain().focus().toggleBold().run();
+      if (cmd === "italic") editor.chain().focus().toggleItalic().run();
+      if (cmd === "quote") editor.chain().focus().toggleBlockquote().run();
+      if (cmd === "bullet") editor.chain().focus().toggleBulletList().run();
+      if (cmd === "clear") editor.chain().focus().clearNodes().unsetAllMarks().run();
+
+      if (cmd === "link") {
+        const prev = editor.getAttributes("link").href || "";
+        const url = prompt("Paste link:", prev);
+        if (url === null) return;
+        if (url.trim() === "") editor.chain().focus().unsetLink().run();
+        else editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
+      }
+
+      if (cmd === "image") {
+        const url = prompt("Image URL:");
+        if (!url) return;
+        editor.chain().focus().setImage({ src: url.trim() }).run();
+      }
+
+      setActiveStates();
+    });
   </script>
 </body>
 </html>
