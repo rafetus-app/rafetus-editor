@@ -1,64 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Rafetus Editor</title>
 
-  <!-- Quill -->
   <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 
   <style>
-    :root {
-      --bg: #ffffff;
-      --text: #111111;
-      --border: #e5e5e5;
-      --toolbar-bg: #fafafa;
+    body { margin:0; background:#fff; }
+    #toolbar{
+      position:sticky; top:0; z-index:10;
+      background:#fafafa; border-bottom:1px solid #e5e5e5;
+      padding:6px; display:flex; gap:6px; flex-wrap:wrap;
+      align-items:center;
     }
-
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-                   "Helvetica Neue", Helvetica, Arial, sans-serif;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-
-    #toolbar {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      background: var(--toolbar-bg);
-      border-bottom: 1px solid var(--border);
-      padding: 6px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    #editor {
-      padding: 16px;
-      min-height: calc(100vh - 48px);
-      box-sizing: border-box;
-    }
-
-    .ql-container { font-size: 16px; line-height: 1.7; }
-    .ql-editor h1 { font-size: 1.8em; font-weight: 600; }
-    .ql-editor h2 { font-size: 1.4em; font-weight: 600; }
-
-    .ql-editor blockquote {
-      border-left: 3px solid #ccc;
-      padding-left: 12px;
-      color: #555;
-    }
-
-    .ql-editor img {
-      max-width: 100%;
-      border-radius: 8px;
-      margin: 12px 0;
-    }
+    #editor { padding:16px; min-height: calc(100vh - 48px); box-sizing:border-box; }
+    .ql-container { font-size:16px; line-height:1.7; }
   </style>
 </head>
 
@@ -69,7 +28,6 @@
       <option value="1">H1</option>
       <option value="2">H2</option>
     </select>
-
     <button class="ql-bold"></button>
     <button class="ql-italic"></button>
     <button class="ql-blockquote"></button>
@@ -81,123 +39,29 @@
   <div id="editor"></div>
 
   <script>
-    // ---------- Quill init ----------
     const quill = new Quill('#editor', {
       theme: 'snow',
-      modules: {
-        toolbar: { container: '#toolbar', handlers: { image: handleImage } }
-      },
+      modules: { toolbar: '#toolbar' },
       placeholder: 'Write your reflection…'
     });
 
-    // ---------- Image optimize ----------
-    function handleImage() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.click();
-
-      input.onchange = () => {
-        const file = input.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = e => resizeAndInsert(e.target.result);
-        reader.readAsDataURL(file);
-      };
-    }
-
-    function resizeAndInsert(base64) {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxWidth = 1280;
-        const scale = Math.min(1, maxWidth / img.width);
-
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        const compressed = canvas.toDataURL('image/jpeg', 0.75);
-        const range = quill.getSelection(true) || { index: quill.getLength() };
-        quill.insertEmbed(range.index, 'image', compressed);
-        quill.setSelection(range.index + 1);
-      };
-      img.src = base64;
-    }
-
-    // ---------- Bridge: FlutterFlow <-> JS ----------
-    let editorReady = false;
-    let pendingHtml = null;
-
-    function isEditorEmpty() {
+    function isEmpty() {
       return quill.getText().trim().length === 0;
     }
 
-    function sendContent() {
-      // Chuẩn hoá: nếu rỗng thì gửi '' thay vì <p><br></p>
-      const out = isEditorEmpty() ? '' : quill.root.innerHTML;
-      if (window.flutter_inappwebview) {
-        window.flutter_inappwebview.callHandler('onChange', out);
-      }
-    }
-
-    // debounce khi gõ
-    let t = null;
-    quill.on('text-change', () => {
-      clearTimeout(t);
-      t = setTimeout(sendContent, 250);
-    });
-
-    // flush khi mất focus / đóng sheet / background
-    window.addEventListener('blur', sendContent);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') sendContent();
-    });
-
-    function setContent(html) {
+    window.setContent = (html) => {
       const s = (html ?? '').toString();
-
-      // nếu Flutter gọi quá sớm thì queue lại
-      if (!editorReady) {
-        pendingHtml = s;
-        return;
-      }
-
-      // tránh reset cursor nếu nội dung y chang
-      const current = isEditorEmpty() ? '' : quill.root.innerHTML;
-      if (s === current) return;
-
-      if (s.trim() === '') {
-        quill.setText('', 'silent');
-        return;
-      }
-
+      if (!s.trim()) { quill.setText(''); return; }
       const delta = quill.clipboard.convert(s);
-      quill.setContents(delta, 'silent');
-    }
+      quill.setContents(delta);
+    };
 
-    function getContent() {
-      return isEditorEmpty() ? '' : quill.root.innerHTML;
-    }
+    window.getContent = () => {
+      return isEmpty() ? '' : quill.root.innerHTML;
+    };
 
-    window.setContent = setContent;
-    window.getContent = getContent;
-
-    // READY handshake
-    setTimeout(() => {
-      editorReady = true;
-      if (window.flutter_inappwebview) {
-        window.flutter_inappwebview.callHandler('onReady');
-      }
-      if (pendingHtml !== null) {
-        const tmp = pendingHtml;
-        pendingHtml = null;
-        setContent(tmp);
-      }
-    }, 0);
+    // báo cho Flutter: editor đã sẵn sàng nhận setContent/getContent
+    window.flutter_inappwebview?.callHandler('editorReady');
   </script>
 </body>
 </html>
