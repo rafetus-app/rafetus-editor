@@ -6,7 +6,7 @@
 
   <title>Rafetus Editor</title>
 
-  <!-- Quill core -->
+  <!-- Quill -->
   <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 
@@ -24,6 +24,7 @@
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
                    "Helvetica Neue", Helvetica, Arial, sans-serif;
+      padding-bottom: env(safe-area-inset-bottom);
     }
 
     #toolbar {
@@ -40,7 +41,7 @@
 
     #editor {
       padding: 16px;
-      min-height: 100vh;
+      min-height: calc(100vh - 48px);
       box-sizing: border-box;
     }
 
@@ -65,12 +66,14 @@
       color: #555;
     }
 
-    .ql-toolbar button,
-    .ql-toolbar select {
-      border-radius: 6px;
+    .ql-editor img {
+      max-width: 100%;
+      border-radius: 8px;
+      margin: 12px 0;
     }
   </style>
 </head>
+
 <body>
 
   <!-- Toolbar -->
@@ -83,15 +86,9 @@
 
     <button class="ql-bold"></button>
     <button class="ql-italic"></button>
-    <button class="ql-underline"></button>
-
     <button class="ql-blockquote"></button>
-    <button class="ql-list" value="ordered"></button>
     <button class="ql-list" value="bullet"></button>
-
-    <button class="ql-link"></button>
     <button class="ql-image"></button>
-
     <button class="ql-clean"></button>
   </div>
 
@@ -102,12 +99,57 @@
     const quill = new Quill('#editor', {
       theme: 'snow',
       modules: {
-        toolbar: '#toolbar'
+        toolbar: {
+          container: '#toolbar',
+          handlers: {
+            image: handleImage
+          }
+        }
       },
       placeholder: 'Write your reflection…'
     });
 
-    // Send content to FlutterFlow
+    /* ---------------- IMAGE OPTIMIZATION ---------------- */
+
+    function handleImage() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.click();
+
+      input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = e => resizeAndInsert(e.target.result);
+        reader.readAsDataURL(file);
+      };
+    }
+
+    function resizeAndInsert(base64) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxWidth = 1280;
+        const scale = Math.min(1, maxWidth / img.width);
+
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const compressed = canvas.toDataURL('image/jpeg', 0.75);
+        const range = quill.getSelection(true);
+        quill.insertEmbed(range.index, 'image', compressed);
+        quill.setSelection(range.index + 1);
+      };
+      img.src = base64;
+    }
+
+    /* ---------------- SYNC WITH FLUTTER ---------------- */
+
     function sendContent() {
       const html = quill.root.innerHTML;
       if (window.flutter_inappwebview) {
@@ -115,16 +157,24 @@
       }
     }
 
-    quill.on('text-change', sendContent);
+    let debounceTimer = null;
+    quill.on('text-change', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(sendContent, 400);
+    });
 
-    // Receive content from FlutterFlow
     function setContent(html) {
       if (!html) return;
-      quill.root.innerHTML = html;
+      const delta = quill.clipboard.convert(html);
+      quill.setContents(delta, 'silent');
     }
 
-    // Expose for FlutterFlow
+    function getContent() {
+      return quill.root.innerHTML;
+    }
+
     window.setContent = setContent;
+    window.getContent = getContent;
   </script>
 
 </body>
