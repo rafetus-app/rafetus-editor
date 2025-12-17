@@ -45,10 +45,13 @@
       placeholder: 'Write your reflection…'
     });
 
-    function isEmpty() {
-      return quill.getText().trim().length === 0;
+    function normalizedHtml() {
+      const text = quill.getText().trim();
+      if (!text) return '';
+      return quill.root.innerHTML;
     }
 
+    // Flutter -> Web
     window.setContent = (html) => {
       const s = (html ?? '').toString();
       if (!s.trim()) { quill.setText(''); return; }
@@ -56,11 +59,10 @@
       quill.setContents(delta);
     };
 
-    window.getContent = () => {
-      return isEmpty() ? '' : quill.root.innerHTML;
-    };
+    // Web -> Flutter (app sẽ gọi getContent qua JS evaluate)
+    window.getContent = () => normalizedHtml();
 
-    // báo cho Flutter: editor đã sẵn sàng nhận setContent/getContent
+    // Handshake: báo Flutter "sẵn sàng"
     window.flutter_inappwebview?.callHandler('editorReady');
   </script>
 </body>
