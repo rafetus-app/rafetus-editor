@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-
   <title>Rafetus Editor</title>
 
   <!-- Quill -->
@@ -45,20 +44,9 @@
       box-sizing: border-box;
     }
 
-    .ql-container {
-      font-size: 16px;
-      line-height: 1.7;
-    }
-
-    .ql-editor h1 {
-      font-size: 1.8em;
-      font-weight: 600;
-    }
-
-    .ql-editor h2 {
-      font-size: 1.4em;
-      font-weight: 600;
-    }
+    .ql-container { font-size: 16px; line-height: 1.7; }
+    .ql-editor h1 { font-size: 1.8em; font-weight: 600; }
+    .ql-editor h2 { font-size: 1.4em; font-weight: 600; }
 
     .ql-editor blockquote {
       border-left: 3px solid #ccc;
@@ -75,8 +63,6 @@
 </head>
 
 <body>
-
-  <!-- Toolbar -->
   <div id="toolbar">
     <select class="ql-header">
       <option selected></option>
@@ -92,25 +78,19 @@
     <button class="ql-clean"></button>
   </div>
 
-  <!-- Editor -->
   <div id="editor"></div>
 
   <script>
+    // ---------- Quill init ----------
     const quill = new Quill('#editor', {
       theme: 'snow',
       modules: {
-        toolbar: {
-          container: '#toolbar',
-          handlers: {
-            image: handleImage
-          }
-        }
+        toolbar: { container: '#toolbar', handlers: { image: handleImage } }
       },
       placeholder: 'Write your reflection…'
     });
 
-    /* ---------------- IMAGE OPTIMIZATION ---------------- */
-
+    // ---------- Image optimize ----------
     function handleImage() {
       const input = document.createElement('input');
       input.type = 'file';
@@ -134,48 +114,90 @@
         const maxWidth = 1280;
         const scale = Math.min(1, maxWidth / img.width);
 
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
 
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         const compressed = canvas.toDataURL('image/jpeg', 0.75);
-        const range = quill.getSelection(true);
+        const range = quill.getSelection(true) || { index: quill.getLength() };
         quill.insertEmbed(range.index, 'image', compressed);
         quill.setSelection(range.index + 1);
       };
       img.src = base64;
     }
 
-    /* ---------------- SYNC WITH FLUTTER ---------------- */
+    // ---------- Bridge: FlutterFlow <-> JS ----------
+    let editorReady = false;
+    let pendingHtml = null;
+
+    function isEditorEmpty() {
+      return quill.getText().trim().length === 0;
+    }
 
     function sendContent() {
-      const html = quill.root.innerHTML;
+      // Chuẩn hoá: nếu rỗng thì gửi '' thay vì <p><br></p>
+      const out = isEditorEmpty() ? '' : quill.root.innerHTML;
       if (window.flutter_inappwebview) {
-        window.flutter_inappwebview.callHandler('onChange', html);
+        window.flutter_inappwebview.callHandler('onChange', out);
       }
     }
 
-    let debounceTimer = null;
+    // debounce khi gõ
+    let t = null;
     quill.on('text-change', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(sendContent, 400);
+      clearTimeout(t);
+      t = setTimeout(sendContent, 250);
+    });
+
+    // flush khi mất focus / đóng sheet / background
+    window.addEventListener('blur', sendContent);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') sendContent();
     });
 
     function setContent(html) {
-      if (!html) return;
-      const delta = quill.clipboard.convert(html);
+      const s = (html ?? '').toString();
+
+      // nếu Flutter gọi quá sớm thì queue lại
+      if (!editorReady) {
+        pendingHtml = s;
+        return;
+      }
+
+      // tránh reset cursor nếu nội dung y chang
+      const current = isEditorEmpty() ? '' : quill.root.innerHTML;
+      if (s === current) return;
+
+      if (s.trim() === '') {
+        quill.setText('', 'silent');
+        return;
+      }
+
+      const delta = quill.clipboard.convert(s);
       quill.setContents(delta, 'silent');
     }
 
     function getContent() {
-      return quill.root.innerHTML;
+      return isEditorEmpty() ? '' : quill.root.innerHTML;
     }
 
     window.setContent = setContent;
     window.getContent = getContent;
-  </script>
 
+    // READY handshake
+    setTimeout(() => {
+      editorReady = true;
+      if (window.flutter_inappwebview) {
+        window.flutter_inappwebview.callHandler('onReady');
+      }
+      if (pendingHtml !== null) {
+        const tmp = pendingHtml;
+        pendingHtml = null;
+        setContent(tmp);
+      }
+    }, 0);
+  </script>
 </body>
 </html>
