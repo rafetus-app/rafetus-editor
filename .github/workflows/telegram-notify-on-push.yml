@@ -1,0 +1,81 @@
+# Notify Telegram group on every push.
+#
+# Required GitHub repo secrets:
+#   TELEGRAM_BOT_TOKEN
+#   TELEGRAM_CHAT_ID
+
+name: Telegram notify on push
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+            echo "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID secret"
+            exit 1
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            COMMITS=$(git log -1 --pretty=format:'• %s (%h)' 2>/dev/null || echo "• (branch mới)")
+          else
+            COMMITS=$(git log --pretty=format:'• %s (%h)' "${BEFORE}..${AFTER}" 2>/dev/null | head -20 || true)
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            COMMITS="• (không lấy được danh sách commit)"
+          fi
+
+          COMPARE_URL="${{ github.event.compare }}"
+          if [ -z "$COMPARE_URL" ] || [ "$COMPARE_URL" = "null" ]; then
+            COMPARE_URL="https://github.com/${{ github.repository }}/commit/${AFTER}"
+          fi
+
+          TEXT=$(printf '%s\n' \
+            "🔔 <b>Push mới — ${REPO_NAME}</b>" \
+            "" \
+            "👤 <b>${{ github.actor }}</b>" \
+            "🌿 <b>${{ github.ref_name }}</b>" \
+            "📦 <code>${{ github.repository }}</code>" \
+            "" \
+            "<b>Commits:</b>" \
+            "$COMMITS" \
+            "" \
+            "🔗 <a href=\"${COMPARE_URL}\">Xem trên GitHub</a>")
+
+          PAYLOAD=$(jq -n \
+            --arg chat_id "$TELEGRAM_CHAT_ID" \
+            --arg text "$TEXT" \
+            '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_web_page_preview: true}')
+
+          HTTP_CODE=$(curl -s -o /tmp/tg-response.json -w '%{http_code}' \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            cat /tmp/tg-response.json
+            exit 1
+          fi
+
+          echo "Telegram notification sent."
